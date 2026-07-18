@@ -1,0 +1,16 @@
+#!/sbin/openrc-run
+
+name="Agent Forge Worker"
+description="Agent Forge remote execution worker"
+command="/home/agent-forge/.local/bin/agent-forge-worker"
+command_args="--config /home/agent-forge/.config/agent-forge-worker/config.json run --concurrency 2"
+command_user="agent-forge:agent-forge"
+command_background="yes"
+pidfile="/run/${RC_SVCNAME}.pid"
+output_log="/var/log/agent-forge-worker.log"
+error_log="/var/log/agent-forge-worker.log"
+
+depend() {
+    need net
+    after firewall
+}

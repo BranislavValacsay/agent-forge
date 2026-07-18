@@ -1,0 +1,58 @@
+name: agent-forge
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agent_forge}
+      POSTGRES_USER: ${POSTGRES_USER:-agent_forge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agent_forge_dev}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U ${POSTGRES_USER:-agent_forge}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:8-alpine
+    command: [redis-server, --appendonly, "yes"]
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: quay.io/minio/minio:latest
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-agent_forge}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-agent_forge_dev_secret}
+    volumes: [minio-data:/data]
+    ports: ["9001:9001"]
+
+  api:
+    build: ./backend
+    environment:
+      AF_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agent_forge}:${POSTGRES_PASSWORD:-agent_forge_dev}@postgres:5432/${POSTGRES_DB:-agent_forge}
+      AF_SECRET_KEY: ${AF_SECRET_KEY:-development-only-change-me-now}
+      AF_FRONTEND_ORIGIN: http://localhost:8080
+      AF_SECURE_COOKIES: "false"
+      AF_CONTAINERIZED: "true"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    ports: ["8000:8000"]
+
+  web:
+    build: ./frontend
+    depends_on: [api]
+    ports: ["8080:8080"]
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:

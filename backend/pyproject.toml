@@ -1,0 +1,36 @@
+[project]
+name = "agent-forge-api"
+version = "0.1.0"
+description = "Agent Forge control plane API"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.34,<1",
+  "sqlalchemy>=2.0,<3",
+  "psycopg[binary]>=3.2,<4",
+  "pydantic-settings>=2.8,<3",
+  "PyJWT>=2.10,<3",
+  "pwdlib[argon2]>=0.2,<1",
+  "email-validator>=2.2,<3",
+  "python-multipart>=0.0.20,<1",
+  "httpx>=0.28,<1",
+  "cryptography>=44,<46",
+  "langgraph>=1.2,<2",
+  "langgraph-checkpoint-sqlite>=3.1,<4",
+  "langgraph-checkpoint-postgres>=3.1,<4",
+]
+
+[project.optional-dependencies]
+crewai-worker = [
+  "crewai>=1.15,<2",
+]
+dev = [
+  "pytest>=8.3,<9",
+  "ruff>=0.11,<1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

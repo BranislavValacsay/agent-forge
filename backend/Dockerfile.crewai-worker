@@ -1,0 +1,16 @@
+FROM python:3.12-slim AS runtime
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    HOME=/home/agentforge
+WORKDIR /opt/agent-forge
+COPY pyproject.toml ./
+COPY app ./app
+RUN pip install --no-cache-dir '.[crewai-worker]' \
+    && install -m 0755 app/static/agent-forge-worker /usr/local/bin/agent-forge-worker \
+    && mkdir -p /config /home/agentforge \
+    && chown -R 10001:0 /config /home/agentforge \
+    && chmod -R g=u /config /home/agentforge
+USER 10001
+VOLUME ["/config"]
+ENTRYPOINT ["agent-forge-worker", "--config", "/config/config.json"]
+CMD ["run", "--concurrency", "1"]
