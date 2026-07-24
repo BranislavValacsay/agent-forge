@@ -1,9 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
 
 from .config import get_settings
 from .database import Base, engine
+from .i18n import localize_detail
 from .routers import admin, agents, audit, auth, mcp_servers, pipelines, providers, runs, workers
 
 
@@ -28,6 +31,15 @@ app.include_router(workers.admin_router, prefix="/api/v1")
 app.include_router(workers.worker_router, prefix="/api/v1")
 
 
+@app.exception_handler(StarletteHTTPException)
+async def localized_http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": localize_detail(exc.detail, request.headers.get("accept-language"))},
+        headers=exc.headers,
+    )
+
+
 @app.on_event("startup")
 def create_schema() -> None:
     Base.metadata.create_all(bind=engine)
@@ -36,6 +48,14 @@ def create_schema() -> None:
     job_columns = {column["name"] for column in inspect(engine).get_columns("worker_jobs")}
     pipeline_columns = {column["name"] for column in inspect(engine).get_columns("pipelines")}
     run_columns = {column["name"] for column in inspect(engine).get_columns("pipeline_runs")}
+    user_columns = {column["name"] for column in inspect(engine).get_columns("users")}
+    step_columns = {column["name"] for column in inspect(engine).get_columns("step_runs")}
+    event_columns = {column["name"] for column in inspect(engine).get_columns("run_events")}
+    if "locale" not in user_columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text("ALTER TABLE users ADD COLUMN locale VARCHAR(10) NOT NULL DEFAULT 'sk'")
+            )
     if "worker_class" not in worker_columns:
         with engine.begin() as connection:
             connection.execute(
@@ -75,6 +95,32 @@ def create_schema() -> None:
                     "ALTER TABLE pipeline_runs ADD COLUMN engine VARCHAR(30) NOT NULL DEFAULT 'legacy'"
                 )
             )
+    if "locale" not in run_columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text("ALTER TABLE pipeline_runs ADD COLUMN locale VARCHAR(10) NOT NULL DEFAULT 'sk'")
+            )
+    if "current_action_key" not in step_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE step_runs ADD COLUMN current_action_key VARCHAR(160)"))
+            if engine.dialect.name == "postgresql":
+                connection.execute(
+                    text("ALTER TABLE step_runs ADD COLUMN current_action_params JSON NOT NULL DEFAULT '{}'::json")
+                )
+            else:
+                connection.execute(
+                    text("ALTER TABLE step_runs ADD COLUMN current_action_params JSON NOT NULL DEFAULT '{}'")
+                )
+    if "title_key" not in event_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE run_events ADD COLUMN title_key VARCHAR(160)"))
+            connection.execute(text("ALTER TABLE run_events ADD COLUMN message_key VARCHAR(160)"))
+            if engine.dialect.name == "postgresql":
+                connection.execute(text("ALTER TABLE run_events ADD COLUMN title_params JSON NOT NULL DEFAULT '{}'::json"))
+                connection.execute(text("ALTER TABLE run_events ADD COLUMN message_params JSON NOT NULL DEFAULT '{}'::json"))
+            else:
+                connection.execute(text("ALTER TABLE run_events ADD COLUMN title_params JSON NOT NULL DEFAULT '{}'"))
+                connection.execute(text("ALTER TABLE run_events ADD COLUMN message_params JSON NOT NULL DEFAULT '{}'"))
     if engine.dialect.name == "postgresql":
         with engine.begin() as connection:
             connection.execute(text("ALTER TYPE agentkind ADD VALUE IF NOT EXISTS 'mcp'"))

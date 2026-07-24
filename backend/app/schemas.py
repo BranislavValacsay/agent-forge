@@ -14,6 +14,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     display_name: str = Field(min_length=2, max_length=120)
     password: str = Field(min_length=10, max_length=200)
+    locale: Literal["sk", "en"] = "sk"
 
 
 class LoginRequest(BaseModel):
@@ -26,6 +27,11 @@ class UserOut(ORMModel):
     email: str
     display_name: str
     is_root: bool
+    locale: Literal["sk", "en"]
+
+
+class UserPreferencesUpdate(BaseModel):
+    locale: Literal["sk", "en"]
 
 
 class UserAdminOut(UserOut):
@@ -197,6 +203,8 @@ class StepOut(ORMModel):
     status: RunStatus
     progress: int
     current_action: str
+    current_action_key: str | None
+    current_action_params: dict[str, Any]
     input_payload: dict[str, Any]
     output_payload: dict[str, Any]
     started_at: datetime | None
@@ -210,6 +218,7 @@ class RunOut(ORMModel):
     pipeline_name: str
     trigger_kind: TriggerKind
     engine: Literal["legacy", "langgraph"]
+    locale: Literal["sk", "en"]
     status: RunStatus
     input_payload: dict[str, Any]
     created_at: datetime
@@ -236,7 +245,11 @@ class EventCreate(BaseModel):
     kind: str
     level: Literal["debug", "info", "warning", "error"] = "info"
     title: str
+    title_key: str | None = None
+    title_params: dict[str, Any] = Field(default_factory=dict)
     message: str = ""
+    message_key: str | None = None
+    message_params: dict[str, Any] = Field(default_factory=dict)
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -315,6 +328,7 @@ class WorkerJobOut(BaseModel):
     required_worker_class: Literal["cpu", "gpu"]
     run_id: str
     step_run_id: str
+    locale: Literal["sk", "en"]
     input_payload: dict[str, Any]
     config: dict[str, Any]
 
@@ -322,6 +336,8 @@ class WorkerJobOut(BaseModel):
 class WorkerJobEvent(BaseModel):
     level: Literal["debug", "info", "warning", "error"] = "info"
     message: str = Field(max_length=10000)
+    message_key: str | None = Field(default=None, max_length=160)
+    message_params: dict[str, Any] = Field(default_factory=dict)
 
 
 class WorkerJobComplete(BaseModel):

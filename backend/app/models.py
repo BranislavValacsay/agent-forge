@@ -75,6 +75,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(500))
     is_root: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    locale: Mapped[str] = mapped_column(String(10), default="sk")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
@@ -263,6 +264,7 @@ class PipelineRun(Base):
     input_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     graph_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON)
     engine: Mapped[str] = mapped_column(String(30), default="langgraph", index=True)
+    locale: Mapped[str] = mapped_column(String(10), default="sk")
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -293,6 +295,8 @@ class StepRun(Base):
     status: Mapped[RunStatus] = mapped_column(Enum(RunStatus), default=RunStatus.queued)
     progress: Mapped[int] = mapped_column(Integer, default=0)
     current_action: Mapped[str] = mapped_column(String(300), default="Čaká na spustenie")
+    current_action_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    current_action_params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     input_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     output_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -313,7 +317,11 @@ class RunEvent(Base):
     kind: Mapped[str] = mapped_column(String(80), index=True)
     level: Mapped[str] = mapped_column(String(20), default="info")
     title: Mapped[str] = mapped_column(String(240))
+    title_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    title_params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     message: Mapped[str] = mapped_column(Text, default="")
+    message_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    message_params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
 

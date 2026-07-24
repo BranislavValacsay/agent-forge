@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .contracts import assign_at, edge_mapping, value_at
 from .execution import execution_spec_for_node
-from .models import JobStatus, PipelineRun, RunEvent, RunStatus, StepRun, WorkerJob
+from .models import PipelineRun, RunEvent, RunStatus, StepRun, WorkerJob
 
 
 class PipelineState(TypedDict):
@@ -162,8 +162,10 @@ def _ensure_frontier_jobs(db: Session, run: PipelineRun, compiled, config: dict)
         spec = execution_spec_for_node(db, node)
         step.input_payload = value.get("input_payload") if isinstance(value.get("input_payload"), dict) else {}
         step.current_action = f"LangGraph: čaká na {spec.required_worker_class.upper()} worker ({spec.executor})"
+        step.current_action_key = "runtime.waitingWorker"
+        step.current_action_params = {"worker_class": spec.required_worker_class.upper(), "executor": spec.executor}
         db.add(WorkerJob(run_id=run.id, step_run_id=step.id, executor=spec.executor, required_worker_class=spec.required_worker_class))
-        db.add(RunEvent(run_id=run.id, step_run_id=step.id, kind="langgraph.node.ready", title="LangGraph aktivoval node", message=step.title, payload={"node_id": node_id, "input": step.input_payload}))
+        db.add(RunEvent(run_id=run.id, step_run_id=step.id, kind="langgraph.node.ready", title="LangGraph aktivoval node", title_key="runtime.langgraphNodeReady", message=step.title, payload={"node_id": node_id, "input": step.input_payload}))
         created = True
     if not snapshot.next and all(step.status == RunStatus.succeeded for step in run.steps):
         run.status = RunStatus.succeeded
@@ -179,7 +181,7 @@ def start_langgraph_run(db: Session, run: PipelineRun) -> None:
         config = _config(run)
         compiled.invoke({"outputs": {}}, config)
         _ensure_frontier_jobs(db, run, compiled, config)
-    db.add(RunEvent(run_id=run.id, kind="langgraph.started", title="LangGraph engine spustený", message="Prvý frontier je pripravený", payload={"engine": "langgraph"}))
+    db.add(RunEvent(run_id=run.id, kind="langgraph.started", title="LangGraph engine spustený", title_key="runtime.langgraphStarted", message="Prvý frontier je pripravený", message_key="runtime.frontierReady", payload={"engine": "langgraph"}))
 
 
 def advance_langgraph_run(db: Session, run: PipelineRun, completed_step: StepRun) -> None:
@@ -204,4 +206,4 @@ def advance_langgraph_run(db: Session, run: PipelineRun, completed_step: StepRun
         final_snapshot = compiled.get_state(config)
         if not final_snapshot.next and all(step.status == RunStatus.succeeded for step in run.steps):
             run.status = RunStatus.succeeded
-    db.add(RunEvent(run_id=run.id, step_run_id=completed_step.id, kind="langgraph.advanced", title="LangGraph stav aktualizovaný", message=completed_step.title, payload={"node_id": completed_step.node_id}))
+    db.add(RunEvent(run_id=run.id, step_run_id=completed_step.id, kind="langgraph.advanced", title="LangGraph stav aktualizovaný", title_key="runtime.langgraphAdvanced", message=completed_step.title, payload={"node_id": completed_step.node_id}))

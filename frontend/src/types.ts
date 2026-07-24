@@ -8,6 +8,7 @@ export interface User {
   email: string
   display_name: string
   is_root: boolean
+  locale: 'sk' | 'en'
 }
 
 export interface Agent {
@@ -54,6 +55,8 @@ export interface StepRun {
   status: RunStatus
   progress: number
   current_action: string
+  current_action_key?: string
+  current_action_params?: Record<string, unknown>
   input_payload: Record<string, unknown>
   output_payload: Record<string, unknown>
   started_at?: string
@@ -67,6 +70,7 @@ export interface PipelineRun {
   pipeline_name: string
   trigger_kind: TriggerKind
   engine: 'legacy' | 'langgraph'
+  locale: 'sk' | 'en'
   status: RunStatus
   input_payload: Record<string, unknown>
   created_at: string
@@ -82,7 +86,11 @@ export interface RunEvent {
   kind: string
   level: 'debug' | 'info' | 'warning' | 'error'
   title: string
+  title_key?: string
+  title_params?: Record<string, unknown>
   message: string
+  message_key?: string
+  message_params?: Record<string, unknown>
   payload: Record<string, unknown>
   created_at: string
 }

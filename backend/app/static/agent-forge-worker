@@ -16,11 +16,52 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-VERSION = "0.6.0"
+VERSION = "0.6.1"
 DEFAULT_CONFIG = Path.home() / ".config" / "agent-forge-worker" / "config.json"
 SUPPORTED_MCP_PROTOCOLS = {"2025-11-25", "2025-06-18", "2025-03-26"}
 MAX_MCP_RESPONSE_BYTES = 10 * 1024 * 1024
 CREWAI_EXECUTION_LOCK = threading.Lock()
+EMIT_CONTEXT = threading.local()
+MESSAGES = {
+    "en": {
+        "runtime.noop": "Agent has no code or output ports; executing the step as a no-op",
+        "runtime.passThrough": "Agent has no code; passing same-named inputs to outputs",
+        "runtime.processStart": "Starting process: {command}",
+        "runtime.outputFile": "Output loaded from AF_OUTPUT_PATH",
+        "runtime.stdoutObject": "AF_OUTPUT_PATH was not created; using a named JSON object from stdout",
+        "runtime.stdoutMapped": "AF_OUTPUT_PATH was not created; mapping stdout to output '{name}'",
+        "runtime.ociStart": "Starting OCI image {image}",
+        "runtime.ollamaCall": "Calling Ollama model {model}",
+        "runtime.openaiCall": "Calling OpenAI-compatible model {model}",
+        "runtime.modelValidate": "Model returned a response; validating JSON output",
+        "runtime.jobRunning": "Task is still running",
+        "runtime.jobClaimed": "Claimed job {id} ({executor})",
+        "runtime.mcpStart": "Starting MCP stdio server {command} ({arguments} arguments)",
+        "runtime.mcpCall": "Calling MCP tool {server} / {tool}",
+        "runtime.crewTaskDone": "CrewAI task completed: {name}",
+        "runtime.crewStart": "CrewAI team starting: {members} members, {tasks} tasks, process {process}",
+        "runtime.crewValidate": "CrewAI team completed all tasks; validating named output",
+    },
+    "sk": {
+        "runtime.noop": "Agent nemá kód ani výstupné porty; krok vykonávam ako no-op",
+        "runtime.passThrough": "Agent nemá kód; rovnomenné vstupy automaticky odovzdávam na výstup",
+        "runtime.processStart": "Spúšťam proces: {command}",
+        "runtime.outputFile": "Výstup načítaný zo súboru AF_OUTPUT_PATH",
+        "runtime.stdoutObject": "AF_OUTPUT_PATH nebol vytvorený; používam pomenovaný JSON objekt zo stdout",
+        "runtime.stdoutMapped": "AF_OUTPUT_PATH nebol vytvorený; stdout automaticky mapujem do výstupu '{name}'",
+        "runtime.ociStart": "Spúšťam OCI image {image}",
+        "runtime.ollamaCall": "Volám Ollama model {model}",
+        "runtime.openaiCall": "Volám OpenAI-compatible model {model}",
+        "runtime.modelValidate": "Model vrátil odpoveď, validujem JSON výstup",
+        "runtime.jobRunning": "Úloha stále beží",
+        "runtime.jobClaimed": "Prevzatá úloha {id} ({executor})",
+        "runtime.mcpStart": "Spúšťam MCP stdio server {command} ({arguments} argumentov)",
+        "runtime.mcpCall": "Volám MCP tool {server} / {tool}",
+        "runtime.crewTaskDone": "CrewAI task dokončený: {name}",
+        "runtime.crewStart": "CrewAI tím štartuje: {members} členov, {tasks} úloh, proces {process}",
+        "runtime.crewValidate": "CrewAI tím dokončil všetky úlohy; validujem pomenovaný výstup",
+    },
+}
 
 
 def request(url, method="GET", data=None, token=None, headers=None, empty_ok=False):
@@ -53,9 +94,27 @@ def save_config(path, data):
 def emit(config, job, message, level="info"):
     print(message, flush=True)
     try:
-        api(config, f"/worker/jobs/{job['id']}/events", "POST", {"level": level, "message": message}, {"X-Lease-Token": job["lease_token"]}, True)
+        payload = {"level": level, "message": message}
+        if getattr(EMIT_CONTEXT, "key", None):
+            payload["message_key"] = EMIT_CONTEXT.key
+            payload["message_params"] = getattr(EMIT_CONTEXT, "params", {})
+        api(config, f"/worker/jobs/{job['id']}/events", "POST", payload, {"X-Lease-Token": job["lease_token"]}, True)
     except Exception as exc:
         print(f"warning: log delivery failed: {exc}", file=sys.stderr)
+
+
+def emit_key(config, job, key, params=None, level="info"):
+    params = params or {}
+    locale = "en" if str(job.get("locale", "sk")).lower().startswith("en") else "sk"
+    template = MESSAGES.get(locale, MESSAGES["en"]).get(key, MESSAGES["en"].get(key, key))
+    message = template.format(**params)
+    try:
+        EMIT_CONTEXT.key = key
+        EMIT_CONTEXT.params = params
+        emit(config, job, message, level)
+    finally:
+        EMIT_CONTEXT.key = None
+        EMIT_CONTEXT.params = {}
 
 
 def builtin(job):
@@ -84,11 +143,11 @@ def run_process(config, job):
     if not code.strip():
         outputs = list(((job.get("config", {}).get("output_schema") or {}).get("properties") or {}))
         if not outputs:
-            emit(config, job, "Agent nemá kód ani výstupné porty; krok vykonávam ako no-op", "debug")
+            emit_key(config, job, "runtime.noop", level="debug")
             return {}
         values = job.get("input_payload") or {}
         if all(name in values for name in outputs):
-            emit(config, job, "Agent nemá kód; rovnomenné vstupy automaticky odovzdávam na výstup", "debug")
+            emit_key(config, job, "runtime.passThrough", level="debug")
             return {name: values[name] for name in outputs}
         raise RuntimeError("Agent nemá kód a jeho pomenované výstupy nemožno vytvoriť zo vstupov: " + ", ".join(outputs))
     suffixes = {"python": ".py", "bash": ".sh", "node": ".js"}
@@ -103,7 +162,7 @@ def run_process(config, job):
         script_path.write_text(code)
         env = {**os.environ, "AF_INPUT_PATH": str(input_path), "AF_OUTPUT_PATH": str(output_path), "AF_JOB_ID": job["id"]}
         command = commands[language] + [str(script_path)]
-        emit(config, job, "Spúšťam proces: " + " ".join(shlex.quote(part) for part in command))
+        emit_key(config, job, "runtime.processStart", {"command": " ".join(shlex.quote(part) for part in command)})
         try:
             process = subprocess.run(command, cwd=work, env=env, capture_output=True, timeout=int(agent.get("timeout_seconds", 300)))
         except subprocess.TimeoutExpired as exc:
@@ -117,7 +176,7 @@ def run_process(config, job):
         if process.returncode:
             raise RuntimeError(f"Process exited with code {process.returncode}")
         if output_path.exists():
-            emit(config, job, "Výstup načítaný zo súboru AF_OUTPUT_PATH", "debug")
+            emit_key(config, job, "runtime.outputFile", level="debug")
             result = json.loads(output_path.read_text())
         else:
             result = output_from_stdout(config, job, stdout)
@@ -148,7 +207,7 @@ def output_from_stdout(config, job, stdout):
             result = {names[0]: parsed}
         else:
             result = parsed
-        emit(config, job, "AF_OUTPUT_PATH nebol vytvorený; používam pomenovaný JSON objekt zo stdout", "debug")
+        emit_key(config, job, "runtime.stdoutObject", level="debug")
         return result
     if len(names) > 1:
         raise RuntimeError("Proces má viac výstupných portov. Vypíš JSON objekt na stdout alebo ho zapíš do AF_OUTPUT_PATH: " + ", ".join(names))
@@ -160,7 +219,7 @@ def output_from_stdout(config, job, stdout):
         value = {"object": value}
     elif declared_type == "string" and not isinstance(value, str):
         value = json.dumps(value, ensure_ascii=False)
-    emit(config, job, f"AF_OUTPUT_PATH nebol vytvorený; stdout automaticky mapujem do výstupu '{name}'", "debug")
+    emit_key(config, job, "runtime.stdoutMapped", {"name": name}, "debug")
     return {name: value}
 
 
@@ -173,7 +232,7 @@ def run_podman(config, job):
         work = Path(directory)
         (work / "input.json").write_text(json.dumps(job.get("input_payload") or {}, ensure_ascii=False))
         command = ["podman", "run", "--rm", "--network=none", "-v", f"{work}:/workspace:Z", "-e", "AF_INPUT_PATH=/workspace/input.json", "-e", "AF_OUTPUT_PATH=/workspace/output.json", image]
-        emit(config, job, f"Spúšťam OCI image {image}")
+        emit_key(config, job, "runtime.ociStart", {"image": image})
         result = subprocess.run(command, capture_output=True, text=True, timeout=int(agent.get("timeout_seconds", 300)))
         for line in (result.stdout + result.stderr).splitlines():
             emit(config, job, line[:10000])
@@ -202,17 +261,17 @@ def run_ai(config, job):
         netloc = "127.0.0.1" + (f":{provider_url.port}" if provider_url.port else "")
         base = urllib.parse.urlunparse(provider_url._replace(netloc=netloc))
     if provider["kind"] == "ollama":
-        emit(config, job, f"Volám Ollama model {provider['model']}")
+        emit_key(config, job, "runtime.ollamaCall", {"model": provider["model"]})
         payload = {"model": provider["model"], "stream": False, "format": "json", "messages": [{"role": "system", "content": prompt}, {"role": "user", "content": user_input}]}
         result = request(base + "/api/chat", "POST", payload, headers=headers)
         text = result["message"]["content"]
     else:
-        emit(config, job, f"Volám OpenAI-compatible model {provider['model']}")
+        emit_key(config, job, "runtime.openaiCall", {"model": provider["model"]})
         endpoint = base + "/chat/completions" if base.endswith("/v1") else base + "/v1/chat/completions"
         payload = {"model": provider["model"], "messages": [{"role": "system", "content": prompt + " Return only valid JSON."}, {"role": "user", "content": user_input}]}
         result = request(endpoint, "POST", payload, headers=headers)
         text = result["choices"][0]["message"]["content"]
-    emit(config, job, "Model vrátil odpoveď, validujem JSON výstup")
+    emit_key(config, job, "runtime.modelValidate")
     parsed = json.loads(text)
     return parsed if isinstance(parsed, dict) else {"result": parsed}
 
@@ -355,7 +414,7 @@ def run_mcp_stdio(config, job, mcp):
         raise RuntimeError("MCP stdio command is missing")
     timeout = int((job["config"].get("draft_config") or {}).get("timeout_seconds", 300))
     env = {**os.environ, **(mcp.get("environment") or {})}
-    emit(config, job, f"Spúšťam MCP stdio server {shlex.quote(command[0])} ({max(0, len(command)-1)} argumentov)")
+    emit_key(config, job, "runtime.mcpStart", {"command": shlex.quote(command[0]), "arguments": max(0, len(command)-1)})
     validate_mcp_object(job.get("input_payload") or {}, job["config"].get("input_schema") or {}, "MCP arguments")
     process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", env=env, bufsize=1)
     messages = queue.Queue()
@@ -426,7 +485,7 @@ def run_mcp_stdio(config, job, mcp):
 
 def run_mcp(config, job):
     mcp = job["config"].get("mcp") or {}
-    emit(config, job, f"Volám MCP tool {mcp.get('server_name', '?')} / {mcp.get('tool_name', '?')}")
+    emit_key(config, job, "runtime.mcpCall", {"server": mcp.get("server_name", "?"), "tool": mcp.get("tool_name", "?")})
     try:
         if mcp.get("transport") == "streamable-http":
             return run_mcp_http(config, job, mcp)
@@ -548,7 +607,7 @@ def run_crewai(config, job):
         task_name = item["name"]
 
         def completed(task_output, name=task_name):
-            emit(config, job, f"CrewAI task dokončený: {name}")
+            emit_key(config, job, "runtime.crewTaskDone", {"name": name})
 
         task_options = {
             "description": item["description"],
@@ -573,13 +632,13 @@ def run_crewai(config, job):
     if process_name == "hierarchical":
         crew_options["manager_llm"] = llm
 
-    emit(config, job, f"CrewAI tím štartuje: {len(members)} členov, {len(tasks)} úloh, proces {process_name}")
+    emit_key(config, job, "runtime.crewStart", {"members": len(members), "tasks": len(tasks), "process": process_name})
     # CrewAI does not expose a concurrency contract for arbitrary custom agents.
     # One crew per worker process avoids shared-library state leaking between jobs;
     # LangGraph still runs independent nodes on other workers in parallel.
     with CREWAI_EXECUTION_LOCK:
         result = Crew(**crew_options).kickoff(inputs=job.get("input_payload") or {})
-    emit(config, job, "CrewAI tím dokončil všetky úlohy; validujem pomenovaný výstup")
+    emit_key(config, job, "runtime.crewValidate")
     return normalize_crewai_result(job, result)
 
 
@@ -601,7 +660,7 @@ def execute(config, job):
 
 def keep_lease(config, job, stop):
     while not stop.wait(25):
-        emit(config, job, "Úloha stále beží", "debug")
+        emit_key(config, job, "runtime.jobRunning", level="debug")
 
 
 def register(args):
@@ -617,7 +676,7 @@ def register(args):
 
 
 def run_job(config, job):
-    emit(config, job, f"Prevzatá úloha {job['id']} ({job['executor']})")
+    emit_key(config, job, "runtime.jobClaimed", {"id": job["id"], "executor": job["executor"]})
     lease_stop = threading.Event()
     lease_thread = threading.Thread(target=keep_lease, args=(config, job, lease_stop), daemon=True)
     lease_thread.start()

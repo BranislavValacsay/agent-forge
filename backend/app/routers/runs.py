@@ -193,6 +193,8 @@ def cancel_run(
         if step.status in {RunStatus.queued, RunStatus.running}:
             step.status = RunStatus.cancelled
             step.current_action = "Zrušené používateľom"
+            step.current_action_key = "runtime.cancelledByUser"
+            step.current_action_params = {}
             step.finished_at = now
     for job in db.scalars(select(WorkerJob).where(WorkerJob.run_id == run.id)):
         if job.status in {JobStatus.queued, JobStatus.leased}:
@@ -207,6 +209,7 @@ def cancel_run(
             kind="run.cancelled",
             level="warning",
             title="Run zrušený",
+            title_key="runtime.runCancelled",
             message=user.display_name,
             payload={"user_id": user.id},
         )

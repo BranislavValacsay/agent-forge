@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..database import get_db
 from ..contracts import validate_graph
 from ..execution import execution_spec_for_node
-from ..models import Pipeline, PipelineRun, PipelineTrigger, RunStatus, StepRun, User, Visibility, WorkerJob
+from ..models import Pipeline, PipelineRun, PipelineTrigger, RunStatus, StepRun, User, WorkerJob
 from ..orchestration import start_langgraph_run
 from ..schemas import PipelineCreate, PipelineOut, PipelineValidationOut, RunCreate, RunOut, TriggerCreate, TriggerOut
 from ..security import current_user, has_permission
@@ -25,7 +25,8 @@ def ordered_nodes(graph: dict) -> list[dict]:
         if source in by_id and target in by_id and target not in outgoing[source]:
             outgoing[source].append(target)
             indegree[target] += 1
-    key = lambda node_id: by_id[node_id].get("position", {}).get("x", 0)
+    def key(node_id: str) -> float:
+        return by_id[node_id].get("position", {}).get("x", 0)
     ready = sorted((node_id for node_id, degree in indegree.items() if degree == 0), key=key)
     result: list[dict] = []
     while ready:
@@ -137,6 +138,7 @@ def create_run(payload: RunCreate, pipeline_id: str, db: Session = Depends(get_d
         input_payload=payload.input_payload,
         graph_snapshot=pipeline.graph,
         engine=pipeline.engine,
+        locale=user.locale,
     )
     db.add(run)
     db.flush()
@@ -157,6 +159,8 @@ def create_run(payload: RunCreate, pipeline_id: str, db: Session = Depends(get_d
         if pipeline.engine == "legacy":
             spec = execution_spec_for_node(db, node)
             step.current_action = f"Čaká na {spec.required_worker_class.upper()} worker s executorom: {spec.executor}"
+            step.current_action_key = "runtime.waitingWorker"
+            step.current_action_params = {"worker_class": spec.required_worker_class.upper(), "executor": spec.executor}
             db.add(WorkerJob(run_id=run.id, step_run_id=step.id, executor=spec.executor, required_worker_class=spec.required_worker_class))
     if pipeline.engine == "langgraph":
         db.flush()

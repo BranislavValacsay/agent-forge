@@ -493,6 +493,8 @@ def claim_job(db: Session = Depends(get_db), worker: Worker = Depends(authentica
     chosen_step.progress = 10
     chosen_step.started_at = chosen_step.started_at or now
     chosen_step.current_action = f"Vykonáva worker {worker.name}"
+    chosen_step.current_action_key = "runtime.workerExecuting"
+    chosen_step.current_action_params = {"worker": worker.name}
     chosen_step.input_payload = mapped_input
     chosen_run.status = RunStatus.running
     chosen_run.started_at = chosen_run.started_at or now
@@ -502,6 +504,8 @@ def claim_job(db: Session = Depends(get_db), worker: Worker = Depends(authentica
             step_run_id=chosen_step.id,
             kind="worker.claimed",
             title="Worker prevzal krok",
+            title_key="runtime.workerClaimed",
+            title_params={"worker": worker.name},
             message=worker.name,
             payload={"worker_id": worker.id, "executor": chosen.executor},
         )
@@ -512,7 +516,9 @@ def claim_job(db: Session = Depends(get_db), worker: Worker = Depends(authentica
             step_run_id=chosen_step.id,
             kind="mapping.applied",
             title="Vstupy namapované podľa názvov portov",
+            title_key="runtime.inputsMapped",
             message=", ".join(mapped_input) or "Bez dátových vstupov",
+            message_key=None if mapped_input else "runtime.noDataInputs",
             payload={"input": mapped_input},
         )
     )
@@ -526,6 +532,7 @@ def claim_job(db: Session = Depends(get_db), worker: Worker = Depends(authentica
         step_run_id=chosen.step_run_id,
         input_payload=chosen_step.input_payload,
         config=config,
+        locale=chosen_run.locale,
     )
 
 
@@ -599,12 +606,17 @@ def job_event(
             kind="worker.log",
             level=payload.level,
             title="Worker log",
+            title_key="runtime.workerLog",
             message=payload.message,
+            message_key=payload.message_key,
+            message_params=payload.message_params,
             payload={"worker_id": worker.id},
         )
     )
     if step:
         step.current_action = payload.message[:300]
+        step.current_action_key = payload.message_key
+        step.current_action_params = payload.message_params
         if payload.level != "debug":
             step.progress = max(step.progress, 50)
     worker.last_seen_at = utcnow()
@@ -662,6 +674,8 @@ def complete_job(
         step.status = RunStatus.succeeded
         step.progress = 100
         step.current_action = "Dokončené"
+        step.current_action_key = "runtime.completed"
+        step.current_action_params = {}
         step.output_payload = normalized_output
         step.finished_at = now
         db.add(
@@ -670,6 +684,7 @@ def complete_job(
                 step_run_id=step.id,
                 kind="step.succeeded",
                 title="Krok dokončený",
+                title_key="runtime.stepCompleted",
                 message=worker.name,
                 payload={"output": normalized_output},
             )

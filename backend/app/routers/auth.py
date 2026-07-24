@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..database import get_db
 from ..models import User
-from ..schemas import LoginRequest, RegisterRequest, UserOut
+from ..schemas import LoginRequest, RegisterRequest, UserOut, UserPreferencesUpdate
 from ..security import create_session_token, current_user, hash_password, verify_password
 
 
@@ -41,6 +41,7 @@ def register(payload: RegisterRequest, response: Response, db: Session = Depends
         display_name=payload.display_name,
         password_hash=hash_password(payload.password),
         is_root=count == 0,
+        locale=payload.locale,
     )
     db.add(user)
     try:
@@ -69,4 +70,16 @@ def logout(response: Response) -> None:
 
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(current_user)) -> User:
+    return user
+
+
+@router.patch("/me/preferences", response_model=UserOut)
+def update_preferences(
+    payload: UserPreferencesUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+) -> User:
+    user.locale = payload.locale
+    db.commit()
+    db.refresh(user)
     return user
