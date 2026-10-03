@@ -270,7 +270,7 @@ class AuditEventCreate(BaseModel):
 
 class AuditEventOut(AuditEventCreate, ORMModel):
     id: str
-    user_id: str
+    user_id: str | None
     created_at: datetime
 
 

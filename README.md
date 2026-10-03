@@ -121,12 +121,17 @@ uvicorn app.main:app --reload
 
 ## Ďalšia etapa
 
+TASK 2 databázový základ (Projects, Work Items, Execution Runs, Results,
+rozšírený append-only audit a Alembic migrácie) je popísaný v
+[docs/core-domain-model.md](docs/core-domain-model.md). Work API a lifecycle
+nasledujú ako TASK 3–4; nové tabuľky zatiaľ nemajú CRUD endpointy.
+
 Audit pre riadené delegovanie agentov, Work Items, Results a live Kanban je v
 [docs/work-orchestration-gap-analysis.md](docs/work-orchestration-gap-analysis.md).
 Obsahuje overený stav kódu, bezpečnostné a runtime medzery, test baseline
-a poradie implementácie TASK 2–18; nové orchestration funkcie ešte nie sú implementované.
+a poradie implementácie TASK 2–18 vo východiskovom stave auditu.
 
-- Alembic migrácie namiesto bootstrap `create_all`,
+- samostatný production migration Job a PostgreSQL deployment overenie,
 - úprava existujúceho providera a rotácia API kľúča,
 - rozšírenie existujúceho user/group ACL enforcement na agent identities a project/team scope,
 - scheduler s databázovým leader lockom,

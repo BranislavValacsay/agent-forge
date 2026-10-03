@@ -13,7 +13,9 @@ router = APIRouter(prefix="/audit-events", tags=["audit"])
 
 @router.post("", response_model=AuditEventOut, status_code=201)
 def create_event(payload: AuditEventCreate, db: Session = Depends(get_db), user: User = Depends(current_user)) -> AuditEvent:
-    event = AuditEvent(**payload.model_dump(), user_id=user.id)
+    event = AuditEvent(
+        **payload.model_dump(), user_id=user.id, actor_type="HUMAN", actor_id=user.id
+    )
     db.add(event)
     db.commit()
     db.refresh(event)

@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     allow_registration: bool = True
     secure_cookies: bool = False
     containerized: bool = False
+    auto_migrate: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="AF_", extra="ignore")
 
