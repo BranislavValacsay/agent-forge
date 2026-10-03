@@ -121,9 +121,14 @@ uvicorn app.main:app --reload
 
 ## Ďalšia etapa
 
+Audit pre riadené delegovanie agentov, Work Items, Results a live Kanban je v
+[docs/work-orchestration-gap-analysis.md](docs/work-orchestration-gap-analysis.md).
+Obsahuje overený stav kódu, bezpečnostné a runtime medzery, test baseline
+a poradie implementácie TASK 2–18; nové orchestration funkcie ešte nie sú implementované.
+
 - Alembic migrácie namiesto bootstrap `create_all`,
 - úprava existujúceho providera a rotácia API kľúča,
-- group ACL enforcement,
+- rozšírenie existujúceho user/group ACL enforcement na agent identities a project/team scope,
 - scheduler s databázovým leader lockom,
 - Kubernetes/OpenShift Job executor (lokálny process, Podman a managed AI worker už sú implementované),
 - artifact upload do MinIO/S3,
