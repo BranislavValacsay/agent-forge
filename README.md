@@ -123,8 +123,10 @@ uvicorn app.main:app --reload
 
 TASK 2 databázový základ (Projects, Work Items, Execution Runs, Results,
 rozšírený append-only audit a Alembic migrácie) je popísaný v
-[docs/core-domain-model.md](docs/core-domain-model.md). Work API a lifecycle
-nasledujú ako TASK 3–4; nové tabuľky zatiaľ nemajú CRUD endpointy.
+[docs/core-domain-model.md](docs/core-domain-model.md). TASK 3 pridáva
+kontrolovaný lifecycle Taskov, audit, projektové oprávnenia aktérov a odvodené
+stavy Epic/Story: [docs/work-item-lifecycle.md](docs/work-item-lifecycle.md).
+Work API nasleduje ako TASK 4; nové tabuľky zatiaľ nemajú CRUD endpointy.
 
 Audit pre riadené delegovanie agentov, Work Items, Results a live Kanban je v
 [docs/work-orchestration-gap-analysis.md](docs/work-orchestration-gap-analysis.md).
